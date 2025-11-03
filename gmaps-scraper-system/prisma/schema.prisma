@@ -1,0 +1,154 @@
+// Prisma Schema for Google Maps Scraper System
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+model Job {
+  id                    String        @id @default(cuid())
+  clientName            String
+  keywords              Json          // Array of keywords
+  locations             Json?         // Optional array of locations
+  maxResultsPerKeyword  Int           @default(500)
+
+  // Progress tracking
+  status                JobStatus     @default(PENDING)
+  scrapedCount          Int           @default(0)
+  currentKeywordIndex   Int           @default(0)
+  currentKeyword        String?
+
+  // Timing
+  startedAt             DateTime?
+  completedAt           DateTime?
+  estimatedDuration     Int?          // in seconds
+
+  // Delay configuration
+  minDelay              Int           @default(3000)  // milliseconds
+  maxDelay              Int           @default(5000)  // milliseconds
+  cooldownAfter         Int           @default(50)    // items
+  cooldownDuration      Int           @default(60000) // milliseconds
+
+  // Error tracking
+  failedCount           Int           @default(0)
+  pauseReason           String?
+  errorMessage          String?
+
+  // Metadata
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  // Relations
+  scrapedPlaces         ScrapedPlace[]
+  failedScrapes         FailedScrape[]
+  systemLogs            SystemLog[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ScrapedPlace {
+  id                String    @id @default(cuid())
+  jobId             String
+  placeId           String    @unique // Google Place ID for deduplication
+
+  // Basic Information
+  name              String
+  address           String?
+  city              String?
+  rating            Float?
+  reviewsCount      Int?
+
+  // Contact Information
+  phone             String?
+  website           String?
+  email             String?
+
+  // Social Media
+  facebook          String?
+  instagram         String?
+  twitter           String?
+  linkedin          String?
+
+  // Location Data
+  plusCode          String?
+  latitude          Float?
+  longitude         Float?
+
+  // Business Information
+  businessStatus    String?
+  businessTypes     Json?     // Array of business types
+  openingHours      Json?     // Opening hours data
+
+  // Additional Data
+  about             String?   @db.Text
+  amenities         Json?
+
+  // Metadata
+  scrapedAt         DateTime  @default(now())
+
+  // Relations
+  job               Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([placeId])
+  @@index([scrapedAt])
+}
+
+model FailedScrape {
+  id                String    @id @default(cuid())
+  jobId             String
+
+  keyword           String
+  location          String?
+  placeId           String?
+  placeName         String?
+
+  errorType         String    // CAPTCHA, TIMEOUT, NETWORK_ERROR, etc.
+  errorMessage      String    @db.Text
+  retryCount        Int       @default(0)
+  maxRetries        Int       @default(3)
+
+  // Metadata
+  failedAt          DateTime  @default(now())
+  lastRetryAt       DateTime?
+
+  // Relations
+  job               Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([errorType])
+  @@index([failedAt])
+}
+
+model SystemLog {
+  id                String    @id @default(cuid())
+  jobId             String?
+
+  level             String    // INFO, WARNING, ERROR, CRITICAL
+  event             String    // JOB_STARTED, JOB_COMPLETED, CAPTCHA_DETECTED, etc.
+  message           String    @db.Text
+  metadata          Json?
+
+  // Metadata
+  createdAt         DateTime  @default(now())
+
+  // Relations
+  job               Job?      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([level])
+  @@index([event])
+  @@index([createdAt])
+}
