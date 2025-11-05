@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { scrapeQueue, ScrapeJobData, jobEvents } from '@/services/queue'
 import { GoogleMapsScraper } from '@/services/scraper'
 import { prisma } from '@/lib/prisma'
@@ -15,7 +16,11 @@ import { Job as BullJob } from 'bull'
 scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
   const { jobId, keywords, locations, maxResultsPerKeyword, minDelay, maxDelay } = job.data
 
+  console.log(`\n========================================`)
   console.log(`Starting job ${jobId}`)
+  console.log(`Keywords: ${keywords.join(', ')}`)
+  console.log(`Locations: ${locations?.join(', ') || 'None'}`)
+  console.log(`========================================\n`)
 
   let scraper: GoogleMapsScraper | null = null
 
@@ -53,15 +58,20 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
     })
 
     // Send Discord notification
-    await notifyJobStarted({
-      id: jobId,
-      clientName: dbJob.clientName,
-      keywords,
-      maxResultsPerKeyword,
-      estimatedDuration: dbJob.estimatedDuration || undefined,
-    })
+    try {
+      await notifyJobStarted({
+        id: jobId,
+        clientName: dbJob.clientName,
+        keywords,
+        maxResultsPerKeyword,
+        estimatedDuration: dbJob.estimatedDuration || undefined,
+      })
+    } catch (error: any) {
+      console.log('Failed to send Discord webhook:', error.message)
+    }
 
     // Initialize scraper
+    console.log('Initializing scraper...')
     scraper = new GoogleMapsScraper()
     await scraper.initialize()
 
@@ -73,6 +83,8 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
     // Process each keyword
     for (let i = startIndex; i < keywords.length; i++) {
       const keyword = keywords[i]
+
+      console.log(`\n--- Processing keyword ${i + 1}/${keywords.length}: ${keyword} ---`)
 
       // Check if job was paused
       const currentJob = await prisma.job.findUnique({ where: { id: jobId } })
@@ -91,19 +103,23 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
         },
       })
 
-      console.log(`Processing keyword ${i + 1}/${keywords.length}: ${keyword}`)
-
       // Process with or without locations
       if (locations && locations.length > 0) {
         for (const location of locations) {
+          console.log(`\nSearching: "${keyword}" in "${location}"`)
+          
           try {
             const places = await scraper.searchPlaces(keyword, location)
-
-            // Limit results per keyword
             const limitedPlaces = places.slice(0, maxResultsPerKeyword)
 
+            console.log(`Got ${places.length} places, processing ${limitedPlaces.length}`)
+
             // Save to database
-            for (const place of limitedPlaces) {
+            for (let placeIndex = 0; placeIndex < limitedPlaces.length; placeIndex++) {
+              const place = limitedPlaces[placeIndex]
+              
+              console.log(`\n>>> Saving place ${placeIndex + 1}/${limitedPlaces.length}: ${place.name}`)
+
               try {
                 await prisma.scrapedPlace.create({
                   data: {
@@ -132,6 +148,7 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
                 })
 
                 totalScraped++
+                console.log(`✓ Saved successfully. Total: ${totalScraped}`)
 
                 // Update progress
                 await prisma.job.update({
@@ -146,31 +163,33 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
                   currentKeyword: keyword,
                 })
 
-                // Milestone notification every 500 places
+                // Milestone notifications
                 if (totalScraped % 500 === 0) {
-                  await notifyMilestone({
-                    id: jobId,
-                    clientName: dbJob.clientName,
-                    scrapedCount: totalScraped,
-                    totalEstimated: keywords.length * maxResultsPerKeyword,
-                  })
+                  try {
+                    await notifyMilestone({
+                      id: jobId,
+                      clientName: dbJob.clientName,
+                      scrapedCount: totalScraped,
+                      totalEstimated: keywords.length * maxResultsPerKeyword,
+                    })
+                  } catch (error: any) {
+                    console.log('Failed to send milestone notification:', error.message)
+                  }
                 }
               } catch (error: any) {
-                // Handle duplicate place_id
                 if (error.code === 'P2002') {
-                  console.log(`Duplicate place: ${place.name} (${place.placeId})`)
+                  console.log(`⚠ Duplicate place: ${place.name} (skipped)`)
                   continue
                 }
                 throw error
               }
             }
 
-            console.log(
-              `Scraped ${limitedPlaces.length} places for "${keyword}" in "${location}"`
-            )
+            console.log(`Completed scraping for "${keyword}" in "${location}"`)
           } catch (error: any) {
             if (error.message === 'CAPTCHA_DETECTED') {
-              // Pause job and notify
+              console.log('\n🚨 CAPTCHA DETECTED - Pausing job')
+              
               await prisma.job.update({
                 where: { id: jobId },
                 data: {
@@ -179,11 +198,15 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
                 },
               })
 
-              await notifyCaptchaDetected({
-                id: jobId,
-                clientName: dbJob.clientName,
-                scrapedCount: totalScraped,
-              })
+              try {
+                await notifyCaptchaDetected({
+                  id: jobId,
+                  clientName: dbJob.clientName,
+                  scrapedCount: totalScraped,
+                })
+              } catch (notifyError: any) {
+                console.log('Failed to send CAPTCHA notification:', notifyError.message)
+              }
 
               await prisma.systemLog.create({
                 data: {
@@ -198,7 +221,8 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
               return
             }
 
-            // Log failed scrape
+            console.error(`❌ Error scraping "${keyword}" in "${location}":`, error.message)
+
             await prisma.failedScrape.create({
               data: {
                 jobId,
@@ -215,18 +239,23 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
               where: { id: jobId },
               data: { failedCount: totalFailed },
             })
-
-            console.error(`Failed to scrape "${keyword}" in "${location}":`, error)
           }
         }
       } else {
         // No locations specified
+        console.log(`\nSearching: "${keyword}" (no location)`)
+        
         try {
           const places = await scraper.searchPlaces(keyword)
-
           const limitedPlaces = places.slice(0, maxResultsPerKeyword)
 
-          for (const place of limitedPlaces) {
+          console.log(`Got ${places.length} places, processing ${limitedPlaces.length}`)
+
+          for (let placeIndex = 0; placeIndex < limitedPlaces.length; placeIndex++) {
+            const place = limitedPlaces[placeIndex]
+            
+            console.log(`\n>>> Saving place ${placeIndex + 1}/${limitedPlaces.length}: ${place.name}`)
+
             try {
               await prisma.scrapedPlace.create({
                 data: {
@@ -255,6 +284,7 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
               })
 
               totalScraped++
+              console.log(`✓ Saved successfully. Total: ${totalScraped}`)
 
               await prisma.job.update({
                 where: { id: jobId },
@@ -268,25 +298,31 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
               })
 
               if (totalScraped % 500 === 0) {
-                await notifyMilestone({
-                  id: jobId,
-                  clientName: dbJob.clientName,
-                  scrapedCount: totalScraped,
-                  totalEstimated: keywords.length * maxResultsPerKeyword,
-                })
+                try {
+                  await notifyMilestone({
+                    id: jobId,
+                    clientName: dbJob.clientName,
+                    scrapedCount: totalScraped,
+                    totalEstimated: keywords.length * maxResultsPerKeyword,
+                  })
+                } catch (error: any) {
+                  console.log('Failed to send milestone notification:', error.message)
+                }
               }
             } catch (error: any) {
               if (error.code === 'P2002') {
-                console.log(`Duplicate place: ${place.name} (${place.placeId})`)
+                console.log(`⚠ Duplicate place: ${place.name} (skipped)`)
                 continue
               }
               throw error
             }
           }
 
-          console.log(`Scraped ${limitedPlaces.length} places for "${keyword}"`)
+          console.log(`Completed scraping for "${keyword}"`)
         } catch (error: any) {
           if (error.message === 'CAPTCHA_DETECTED') {
+            console.log('\n🚨 CAPTCHA DETECTED - Pausing job')
+            
             await prisma.job.update({
               where: { id: jobId },
               data: {
@@ -295,11 +331,15 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
               },
             })
 
-            await notifyCaptchaDetected({
-              id: jobId,
-              clientName: dbJob.clientName,
-              scrapedCount: totalScraped,
-            })
+            try {
+              await notifyCaptchaDetected({
+                id: jobId,
+                clientName: dbJob.clientName,
+                scrapedCount: totalScraped,
+              })
+            } catch (notifyError: any) {
+              console.log('Failed to send CAPTCHA notification:', notifyError.message)
+            }
 
             await prisma.systemLog.create({
               data: {
@@ -313,6 +353,8 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
             await scraper.close()
             return
           }
+
+          console.error(`❌ Error scraping "${keyword}":`, error.message)
 
           await prisma.failedScrape.create({
             data: {
@@ -329,8 +371,6 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
             where: { id: jobId },
             data: { failedCount: totalFailed },
           })
-
-          console.error(`Failed to scrape "${keyword}":`, error)
         }
       }
     }
@@ -339,6 +379,13 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
     const completedAt = new Date()
     const startedAt = dbJob.startedAt || new Date()
     const duration = Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000)
+
+    console.log(`\n========================================`)
+    console.log(`✓ JOB COMPLETED`)
+    console.log(`Total scraped: ${totalScraped}`)
+    console.log(`Total failed: ${totalFailed}`)
+    console.log(`Duration: ${duration} seconds`)
+    console.log(`========================================\n`)
 
     await prisma.job.update({
       where: { id: jobId },
@@ -357,19 +404,23 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
       },
     })
 
-    await notifyJobCompleted({
-      id: jobId,
-      clientName: dbJob.clientName,
-      scrapedCount: totalScraped,
-      failedCount: totalFailed,
-      duration,
-    })
+    try {
+      await notifyJobCompleted({
+        id: jobId,
+        clientName: dbJob.clientName,
+        scrapedCount: totalScraped,
+        failedCount: totalFailed,
+        duration,
+      })
+    } catch (error: any) {
+      console.log('Failed to send completion notification:', error.message)
+    }
 
     jobEvents.emit('job:completed', { jobId })
 
-    console.log(`Job ${jobId} completed successfully`)
   } catch (error: any) {
-    console.error(`Job ${jobId} failed:`, error)
+    console.error(`\n❌ JOB FAILED: ${error.message}`)
+    console.error(error.stack)
 
     // Update job status to FAILED
     await prisma.job.update({
@@ -392,12 +443,16 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
     const dbJob = await prisma.job.findUnique({ where: { id: jobId } })
 
     if (dbJob) {
-      await notifyJobFailed({
-        id: jobId,
-        clientName: dbJob.clientName,
-        error: error.message || 'Unknown error',
-        scrapedCount: dbJob.scrapedCount,
-      })
+      try {
+        await notifyJobFailed({
+          id: jobId,
+          clientName: dbJob.clientName,
+          error: error.message || 'Unknown error',
+          scrapedCount: dbJob.scrapedCount,
+        })
+      } catch (notifyError: any) {
+        console.log('Failed to send failure notification:', notifyError.message)
+      }
     }
 
     jobEvents.emit('job:failed', { jobId, error: error.message })
@@ -405,6 +460,7 @@ scrapeQueue.process(1, async (job: BullJob<ScrapeJobData>) => {
     throw error
   } finally {
     if (scraper) {
+      console.log('Closing browser...')
       await scraper.close()
     }
   }

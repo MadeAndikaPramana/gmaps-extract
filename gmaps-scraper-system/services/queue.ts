@@ -1,5 +1,6 @@
+import 'dotenv/config'
 import Bull from 'bull'
-import { redis } from '@/lib/redis'
+import { getBullRedisConfig } from '@/lib/redis'
 
 export interface ScrapeJobData {
   jobId: string
@@ -14,66 +15,48 @@ export interface ScrapeJobData {
   resumeFromIndex?: number
 }
 
-// Create the scrape queue
-export const scrapeQueue = new Bull<ScrapeJobData>('gmaps-scrape', {
-  createClient: (type) => {
-    switch (type) {
-      case 'client':
-        return redis
-      case 'subscriber':
-        return redis.duplicate()
-      case 'bclient':
-        return redis.duplicate()
-      default:
-        return redis.duplicate()
-    }
-  },
-  defaultJobOptions: {
+// Create Bull queue with compatible Redis config
+export const scrapeQueue = new Bull('gmaps-scrape', {
+  redis: getBullRedisConfig(),
+})
+
+// Main job submission function
+export async function addScrapeJob(data: ScrapeJobData): Promise<Bull.Job<ScrapeJobData>> {
+  return await scrapeQueue.add(data, {
     attempts: 3,
     backoff: {
       type: 'exponential',
-      delay: 30000, // 30 seconds
+      delay: 5000,
     },
-    removeOnComplete: false, // Keep completed jobs for history
-    removeOnFail: false, // Keep failed jobs for debugging
-  },
-})
-
-// Add job to queue
-export async function addScrapeJob(data: ScrapeJobData): Promise<Bull.Job<ScrapeJobData>> {
-  return await scrapeQueue.add(data, {
-    jobId: data.jobId, // Use our job ID as Bull job ID
-    priority: 1,
+    removeOnComplete: false,
+    removeOnFail: false,
   })
 }
 
-// Pause a specific job
-export async function pauseScrapeJob(jobId: string): Promise<void> {
-  const job = await scrapeQueue.getJob(jobId)
-  if (job) {
-    // We'll handle pausing in the worker by checking job status in DB
-    console.log(`Job ${jobId} marked for pause`)
-  }
-}
+// Alias for consistency
+export const createScrapeJob = addScrapeJob
 
-// Resume a specific job
+// Resume job function
 export async function resumeScrapeJob(data: ScrapeJobData): Promise<Bull.Job<ScrapeJobData>> {
-  // Add job back to queue with resume data
   return await scrapeQueue.add(data, {
-    jobId: data.jobId,
-    priority: 2, // Higher priority for resumed jobs
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: false,
+    removeOnFail: false,
   })
 }
 
-// Get queue stats
+// Queue statistics
 export async function getQueueStats() {
-  const [waiting, active, completed, failed, delayed, paused] = await Promise.all([
+  const [waiting, active, completed, failed, delayed] = await Promise.all([
     scrapeQueue.getWaitingCount(),
     scrapeQueue.getActiveCount(),
     scrapeQueue.getCompletedCount(),
     scrapeQueue.getFailedCount(),
     scrapeQueue.getDelayedCount(),
-    scrapeQueue.getPausedCount(),
   ])
 
   return {
@@ -82,18 +65,11 @@ export async function getQueueStats() {
     completed,
     failed,
     delayed,
-    paused,
   }
 }
 
-// Clean old jobs
-export async function cleanOldJobs(olderThanMs = 7 * 24 * 60 * 60 * 1000): Promise<void> {
-  await scrapeQueue.clean(olderThanMs, 'completed')
-  await scrapeQueue.clean(olderThanMs, 'failed')
-}
-
 // Event emitter for real-time updates
-export class JobEventEmitter {
+class JobEventEmitter {
   private listeners: Map<string, Set<(data: any) => void>> = new Map()
 
   on(event: string, callback: (data: any) => void): void {
@@ -113,13 +89,7 @@ export class JobEventEmitter {
   emit(event: string, data: any): void {
     const callbacks = this.listeners.get(event)
     if (callbacks) {
-      callbacks.forEach((callback) => {
-        try {
-          callback(data)
-        } catch (error) {
-          console.error('Error in event listener:', error)
-        }
-      })
+      callbacks.forEach((callback) => callback(data))
     }
   }
 

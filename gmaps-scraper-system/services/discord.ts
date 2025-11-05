@@ -20,7 +20,7 @@ const COLORS: Record<DiscordEmbedColor, number> = {
 }
 
 async function sendWebhook(embeds: DiscordEmbed[]): Promise<void> {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL
+  const webhookUrl = process.env.https://discord.com/api/webhooks/1435629341491986445/dZQNqhYnx5JJozPChulGA7jG98Gb4ZBXbAW0GL6mPeW2NXJononPHIclgaX6VA_Gj2lN
 
   if (!webhookUrl) {
     console.warn('Discord webhook URL not configured')
