@@ -37,6 +37,10 @@ export const scrapeQueue = new Bull<ScrapeJobData>('gmaps-scrape', {
     removeOnComplete: false, // Keep completed jobs for history
     removeOnFail: false, // Keep failed jobs for debugging
   },
+  settings: {
+    maxStalledCount: 2, // Maximum times a job can be stalled before failing
+    stalledInterval: 30000, // Check for stalled jobs every 30 seconds
+  },
 })
 
 // Add job to queue

@@ -61,11 +61,11 @@ export class GoogleMapsScraper {
 
   async checkAndRestartSession(): Promise<void> {
     const timeSinceStart = Date.now() - this.sessionStartTime
-    const oneHour = 60 * 60 * 1000
+    const thirtyMinutes = 30 * 60 * 1000
 
-    // Restart browser every 500 places or 1 hour
-    if (this.placesScrapedInSession >= 500 || timeSinceStart >= oneHour) {
-      console.log('Restarting browser session for freshness...')
+    // Restart browser every 300 places or 30 minutes (more frequent for 3 concurrent workers)
+    if (this.placesScrapedInSession >= 300 || timeSinceStart >= thirtyMinutes) {
+      console.log('⟳ Restarting browser session for freshness...')
       await this.close()
       await this.initialize()
       this.placesScrapedInSession = 0
