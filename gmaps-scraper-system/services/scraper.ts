@@ -1,9 +1,10 @@
-import { Page } from 'puppeteer'
-import { humanDelay, cooldownDelay } from '@/utils/delays'
+import puppeteer, { Browser, Page } from 'puppeteer'
+import StealthPlugin from 'puppeteer-extra-plugin-stealth'
 import { applyStealthMeasures, detectCaptcha } from '@/utils/stealth'
+import { humanDelay, cooldownDelay } from '@/utils/delays'
 
+// Apply stealth plugin
 const puppeteerExtra = require('puppeteer-extra')
-const StealthPlugin = require('puppeteer-extra-plugin-stealth')
 puppeteerExtra.use(StealthPlugin())
 
 export interface ScrapedPlaceData {
@@ -31,7 +32,7 @@ export interface ScrapedPlaceData {
 }
 
 export class GoogleMapsScraper {
-  private browser: any = null
+  private browser: Browser | null = null
   private page: Page | null = null
   private placesScrapedInSession = 0
   private sessionStartTime = Date.now()
@@ -60,10 +61,11 @@ export class GoogleMapsScraper {
 
   async checkAndRestartSession(): Promise<void> {
     const timeSinceStart = Date.now() - this.sessionStartTime
-    const oneHour = 60 * 60 * 1000
+    const thirtyMinutes = 30 * 60 * 1000
 
-    if (this.placesScrapedInSession >= 500 || timeSinceStart >= oneHour) {
-      console.log('Restarting browser session for freshness...')
+    // Restart browser every 300 places or 30 minutes (more frequent for 3 concurrent workers)
+    if (this.placesScrapedInSession >= 300 || timeSinceStart >= thirtyMinutes) {
+      console.log('⟳ Restarting browser session for freshness...')
       await this.close()
       await this.initialize()
       this.placesScrapedInSession = 0
@@ -90,12 +92,18 @@ export class GoogleMapsScraper {
         timeout: 60000,
       })
 
+      // Check for CAPTCHA
       if (await detectCaptcha(this.page)) {
         throw new Error('CAPTCHA_DETECTED')
       }
 
+      // Wait for results to load
       await this.page.waitForSelector('[role="feed"]', { timeout: 10000 })
+
+      // Scroll to load more results
       await this.scrollResults()
+
+      // Get all place links
       const placeLinks = await this.extractPlaceLinks()
 
       console.log(`Found ${placeLinks.length} places for "${searchQuery}"`)
@@ -104,9 +112,13 @@ export class GoogleMapsScraper {
 
       for (const link of placeLinks) {
         try {
+          // Check session health
           await this.checkAndRestartSession()
+
+          // Human-like delay between places
           await humanDelay()
 
+          // Check for CAPTCHA before each scrape
           if (await detectCaptcha(this.page!)) {
             throw new Error('CAPTCHA_DETECTED')
           }
@@ -117,6 +129,7 @@ export class GoogleMapsScraper {
             scrapedData.push(placeData)
             this.placesScrapedInSession++
 
+            // Cooldown every 50 items
             if (scrapedData.length % 50 === 0) {
               await cooldownDelay()
             }
@@ -125,7 +138,7 @@ export class GoogleMapsScraper {
           if (error.message === 'CAPTCHA_DETECTED') {
             throw error
           }
-          console.error(`Error scraping place:`, error.message)
+          console.error(`Error scraping place ${link}:`, error)
           continue
         }
       }
@@ -135,7 +148,7 @@ export class GoogleMapsScraper {
       if (error.message === 'CAPTCHA_DETECTED') {
         throw error
       }
-      console.error(`Error searching:`, error.message)
+      console.error(`Error searching for "${searchQuery}":`, error)
       throw error
     }
   }
@@ -156,15 +169,16 @@ export class GoogleMapsScraper {
 
         await humanDelay(1000, 2000)
 
+        // Check if we've reached the end
         const endOfResults = await this.page.evaluate(() => {
           const text = document.body.innerText
-          return text.includes("You've reached the end")
+          return text.includes("You've reached the end of the list")
         })
 
         if (endOfResults) break
       }
     } catch (error) {
-      console.error('Error scrolling:', error)
+      console.error('Error scrolling results:', error)
     }
   }
 
@@ -186,11 +200,14 @@ export class GoogleMapsScraper {
         return links
       })
     } catch (error) {
+      console.error('Error extracting place links:', error)
       return []
     }
   }
 
-  private async scrapePlaceDetails(placeLink: string): Promise<ScrapedPlaceData | null> {
+  private async scrapePlaceDetails(
+    placeLink: string
+  ): Promise<ScrapedPlaceData | null> {
     if (!this.page) return null
 
     try {
@@ -200,66 +217,78 @@ export class GoogleMapsScraper {
 
       await this.page.goto(fullUrl, {
         waitUntil: 'networkidle2',
-        timeout: 30000,
+        timeout: 60000,
       })
 
-      await humanDelay(1000, 2000)
+      // Wait for place details to load
+      await this.page.waitForSelector('h1', { timeout: 10000 })
 
+      // Extract place ID from URL
       const placeId = await this.extractPlaceId()
+
       if (!placeId) {
+        console.error('Could not extract place ID')
         return null
       }
 
+      // Extract all data
       const data = await this.page.evaluate(() => {
-        const nameEl = document.querySelector('h1')
-        const name = nameEl?.textContent?.trim() || ''
+        const getText = (selector: string): string | undefined => {
+          const el = document.querySelector(selector)
+          return el?.textContent?.trim() || undefined
+        }
 
-        const addressButton = document.querySelector('button[data-item-id="address"]')
+        const getAttribute = (selector: string, attr: string): string | undefined => {
+          const el = document.querySelector(selector)
+          return el?.getAttribute(attr) || undefined
+        }
+
+        // Name
+        const name = getText('h1')!
+
+        // Address
+        const addressButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(
+          (btn) => btn.getAttribute('data-item-id')?.includes('address')
+        )
         const address = addressButton?.getAttribute('aria-label')?.replace('Address: ', '')
 
-        const ratingEl = document.querySelector('[role="img"][aria-label*="star"]')
-        const ratingText = ratingEl?.getAttribute('aria-label') || ''
-        const ratingMatch = ratingText.match(/[\d.]+/)
-        const rating = ratingMatch ? parseFloat(ratingMatch[0]) : undefined
+        // Rating and reviews
+        const ratingText = getText('[role="img"][aria-label*="stars"]')
+        const rating = ratingText ? parseFloat(ratingText.split(' ')[0]) : undefined
+        const reviewsText = getText('[role="img"][aria-label*="reviews"]')
+        const reviewsCount = reviewsText
+          ? parseInt(reviewsText.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || '0')
+          : undefined
 
-        const reviewsEl = Array.from(document.querySelectorAll('button')).find(
-          (btn: Element) => btn.getAttribute('aria-label')?.includes('reviews')
-        )
-        const reviewsText = reviewsEl?.getAttribute('aria-label') || ''
-        const reviewsMatch = reviewsText.match(/[\d,]+/)
-        const reviewsCount = reviewsMatch ? parseInt(reviewsMatch[0].replace(/,/g, '')) : undefined
-
+        // Phone
         const phoneButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(
-          (btn: Element) => btn.getAttribute('data-item-id')?.includes('phone')
+          (btn) => btn.getAttribute('data-item-id')?.includes('phone')
         )
         const phone = phoneButton?.getAttribute('aria-label')?.replace('Phone: ', '')
 
+        // Website
         const websiteLink = Array.from(document.querySelectorAll('a[data-item-id]')).find(
-          (link: Element) => link.getAttribute('data-item-id')?.includes('authority')
-        ) as HTMLAnchorElement | undefined
+          (link) => link.getAttribute('data-item-id')?.includes('authority')
+        ) as HTMLAnchorElement
         const website = websiteLink?.href
 
-        const businessStatus = document.body.innerText.includes('Closed') ? 'CLOSED' : 'OPERATIONAL'
+        // Business status
+        const statusEl = document.querySelector('[class*="operational"]')
+        const businessStatus = statusEl?.textContent?.trim()
 
+        // Business types
         const typeButton = document.querySelector('button[jsaction*="category"]')
-        const businessTypes = typeButton?.textContent?.trim() ? [typeButton.textContent.trim()] : undefined
+        const businessTypes = typeButton?.textContent?.trim()
 
+        // Plus code
         const plusCodeButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(
-          (btn: Element) => btn.getAttribute('data-item-id')?.includes('plus_code')
+          (btn) => btn.getAttribute('data-item-id')?.includes('plus_code')
         )
         const plusCode = plusCodeButton?.getAttribute('aria-label')?.replace('Plus code: ', '')
 
+        // About
         const aboutSection = document.querySelector('[aria-label*="About"]')
         const about = aboutSection?.textContent?.trim()
-
-        const allLinks = Array.from(document.querySelectorAll('a[href]')) as HTMLAnchorElement[]
-        const facebook = allLinks.find(a => a.href.includes('facebook.com'))?.href
-        const instagram = allLinks.find(a => a.href.includes('instagram.com'))?.href
-        const twitter = allLinks.find(a => a.href.includes('twitter.com') || a.href.includes('x.com'))?.href
-        const linkedin = allLinks.find(a => a.href.includes('linkedin.com'))?.href
-        
-        const emailLink = allLinks.find(a => a.href.startsWith('mailto:'))
-        const email = emailLink?.href.replace('mailto:', '')
 
         return {
           name,
@@ -269,41 +298,30 @@ export class GoogleMapsScraper {
           phone,
           website,
           businessStatus,
-          businessTypes,
+          businessTypes: businessTypes ? [businessTypes] : undefined,
           plusCode,
           about,
-          facebook,
-          instagram,
-          twitter,
-          linkedin,
-          email,
         }
       })
 
+      // Extract coordinates from URL
       const coordinates = this.extractCoordinates(this.page.url())
+
+      // Extract social media links
+      const socialMedia = await this.extractSocialMedia()
+
+      // Extract opening hours
+      const openingHours = await this.extractOpeningHours()
 
       return {
         placeId,
-        name: data.name,
-        address: data.address,
-        rating: data.rating,
-        reviewsCount: data.reviewsCount,
-        phone: data.phone,
-        website: data.website,
-        businessStatus: data.businessStatus,
-        businessTypes: data.businessTypes,
-        plusCode: data.plusCode,
-        about: data.about,
-        facebook: data.facebook,
-        instagram: data.instagram,
-        twitter: data.twitter,
-        linkedin: data.linkedin,
-        email: data.email,
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-      }
-    } catch (error: any) {
-      console.error('Error scraping place details:', error.message)
+        ...data,
+        ...coordinates,
+        ...socialMedia,
+        openingHours,
+      } as ScrapedPlaceData
+    } catch (error) {
+      console.error('Error scraping place details:', error)
       return null
     }
   }
@@ -320,7 +338,10 @@ export class GoogleMapsScraper {
     }
   }
 
-  private extractCoordinates(url: string): { latitude?: number; longitude?: number } {
+  private extractCoordinates(url: string): {
+    latitude?: number
+    longitude?: number
+  } {
     try {
       const match = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
       if (match) {
@@ -330,9 +351,87 @@ export class GoogleMapsScraper {
         }
       }
     } catch (error) {
-      // ignore
+      console.error('Error extracting coordinates:', error)
     }
     return {}
+  }
+
+  private async extractSocialMedia(): Promise<{
+    facebook?: string
+    instagram?: string
+    twitter?: string
+    linkedin?: string
+    email?: string
+  }> {
+    if (!this.page) return {}
+
+    try {
+      return await this.page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a[href]'))
+        const result: any = {}
+
+        links.forEach((link) => {
+          const href = link.getAttribute('href') || ''
+
+          if (href.includes('facebook.com')) {
+            result.facebook = href
+          } else if (href.includes('instagram.com')) {
+            result.instagram = href
+          } else if (href.includes('twitter.com') || href.includes('x.com')) {
+            result.twitter = href
+          } else if (href.includes('linkedin.com')) {
+            result.linkedin = href
+          } else if (href.startsWith('mailto:')) {
+            result.email = href.replace('mailto:', '')
+          }
+        })
+
+        return result
+      })
+    } catch (error) {
+      return {}
+    }
+  }
+
+  private async extractOpeningHours(): Promise<any> {
+    if (!this.page) return null
+
+    try {
+      // Click on hours button if available
+      const hoursButton = await this.page.$('button[aria-label*="hours"]')
+
+      if (hoursButton) {
+        await hoursButton.click()
+        await humanDelay(500, 1000)
+
+        const hours = await this.page.evaluate(() => {
+          const table = document.querySelector('table[aria-label*="hours"]')
+          if (!table) return null
+
+          const rows = Array.from(table.querySelectorAll('tr'))
+          const schedule: any = {}
+
+          rows.forEach((row) => {
+            const cells = Array.from(row.querySelectorAll('td'))
+            if (cells.length >= 2) {
+              const day = cells[0].textContent?.trim()
+              const hours = cells[1].textContent?.trim()
+              if (day && hours) {
+                schedule[day] = hours
+              }
+            }
+          })
+
+          return schedule
+        })
+
+        return hours
+      }
+    } catch (error) {
+      console.error('Error extracting opening hours:', error)
+    }
+
+    return null
   }
 
   async close(): Promise<void> {

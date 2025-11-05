@@ -1,14 +1,45 @@
-export async function humanDelay(min: number = 3000, max: number = 5000): Promise<void> {
-  const delay = Math.floor(Math.random() * (max - min + 1)) + min
-  return new Promise(resolve => setTimeout(resolve, delay))
+/**
+ * Generate a random delay with Gaussian distribution for more human-like timing
+ */
+export function getRandomDelay(min: number, max: number): number {
+  // Box-Muller transform for Gaussian distribution
+  const u1 = Math.random()
+  const u2 = Math.random()
+  const gaussian = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2)
+
+  // Scale and shift to fit between min and max
+  const mean = (min + max) / 2
+  const stdDev = (max - min) / 6 // 99.7% of values will be within range
+
+  let delay = mean + gaussian * stdDev
+
+  // Clamp to min/max range
+  delay = Math.max(min, Math.min(max, delay))
+
+  return Math.round(delay)
 }
 
-export async function cooldownDelay(duration: number = 60000): Promise<void> {
-  console.log(`Cooldown: waiting ${duration}ms...`)
-  return new Promise(resolve => setTimeout(resolve, duration))
-}
-
-// Helper for specific delays
-export function delay(ms: number): Promise<void> {
+/**
+ * Sleep for a specified number of milliseconds
+ */
+export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Get a human-like delay between actions
+ * Defaults increased to 4-6 seconds for 3 concurrent workers
+ */
+export async function humanDelay(minMs = 4000, maxMs = 6000): Promise<void> {
+  const delay = getRandomDelay(minMs, maxMs)
+  await sleep(delay)
+}
+
+/**
+ * Cooldown period after scraping multiple items
+ * Increased to 90 seconds for 3 concurrent workers
+ */
+export async function cooldownDelay(durationMs = 90000): Promise<void> {
+  console.log(`⏸️  Cooldown period: ${durationMs / 1000} seconds...`)
+  await sleep(durationMs)
 }
