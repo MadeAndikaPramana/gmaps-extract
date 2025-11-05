@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { scrapeQueue, ScrapeJobData, jobEvents } from '@/services/queue'
 import { GoogleMapsScraper } from '@/services/scraper'
 import { prisma } from '@/lib/prisma'
