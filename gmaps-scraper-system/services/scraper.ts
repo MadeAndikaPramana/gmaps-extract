@@ -61,10 +61,10 @@ export class GoogleMapsScraper {
 
   async checkAndRestartSession(): Promise<void> {
     const timeSinceStart = Date.now() - this.sessionStartTime
-    const thirtyMinutes = 30 * 60 * 1000
+    const oneHour = 60 * 60 * 1000
 
-    // Restart browser every 300 places or 30 minutes (more frequent for 3 concurrent workers)
-    if (this.placesScrapedInSession >= 300 || timeSinceStart >= thirtyMinutes) {
+    // Restart browser every 500 places or 60 minutes for optimal performance
+    if (this.placesScrapedInSession >= 500 || timeSinceStart >= oneHour) {
       console.log('⟳ Restarting browser session for freshness...')
       await this.close()
       await this.initialize()
@@ -135,6 +135,12 @@ export class GoogleMapsScraper {
             scrapedData.push(placeData)
             this.placesScrapedInSession++
 
+            // Progress indicator every 10 places
+            if (scrapedData.length % 10 === 0) {
+              const percentage = Math.round((scrapedData.length / totalPlaces) * 100)
+              console.log(`📊 Progress: ${scrapedData.length}/${totalPlaces} (${percentage}%)`)
+            }
+
             // Cooldown every 50 items
             if (scrapedData.length % 50 === 0) {
               await cooldownDelay()
@@ -171,19 +177,29 @@ export class GoogleMapsScraper {
       const feedSelector = '[role="feed"]'
       let previousCount = 0
       let noChangeCount = 0
-      const maxScrolls = 40
+      const maxScrolls = 50 // Increased for more aggressive scrolling
 
       for (let i = 0; i < maxScrolls; i++) {
-        // Scroll to bottom
+        // Multiple scroll methods for maximum effectiveness
         await this.page.evaluate((selector) => {
           const feed = document.querySelector(selector)
           if (feed) {
+            // Primary method: scroll to bottom
             feed.scrollTop = feed.scrollHeight
+
+            // Backup method: scroll by a large amount
+            feed.scrollBy(0, 1000)
+
+            // Get last element and scroll it into view
+            const items = feed.querySelectorAll('a[href*="/maps/place/"]')
+            if (items.length > 0) {
+              items[items.length - 1].scrollIntoView({ behavior: 'smooth' })
+            }
           }
         }, feedSelector)
 
-        // Wait 2-3 seconds for lazy-loading
-        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000))
+        // Wait 3 seconds for lazy-loading (increased for reliability)
+        await new Promise(resolve => setTimeout(resolve, 3000))
 
         // Count current results
         const currentCount = await this.page.evaluate(() => {
@@ -191,7 +207,8 @@ export class GoogleMapsScraper {
           return links.length
         })
 
-        console.log(`→ Scroll ${i + 1}: Found ${currentCount} places`)
+        const newPlaces = currentCount - previousCount
+        console.log(`→ Scroll ${i + 1}: Found ${currentCount} places (+${newPlaces} new)`)
 
         // Check if we've reached the end
         const endOfResults = await this.page.evaluate(() => {
@@ -207,11 +224,11 @@ export class GoogleMapsScraper {
           break
         }
 
-        // Check if no new results appeared
+        // Check if no new results appeared (increased to 5 for more thorough scrolling)
         if (currentCount === previousCount) {
           noChangeCount++
-          if (noChangeCount >= 3) {
-            console.log(`✓ No new results after 3 consecutive scrolls (${i + 1} total scrolls)`)
+          if (noChangeCount >= 5) {
+            console.log(`✓ No new results after 5 consecutive scrolls`)
             break
           }
         } else {
@@ -259,6 +276,21 @@ export class GoogleMapsScraper {
   private async scrapePlaceDetails(
     placeLink: string
   ): Promise<ScrapedPlaceData | null> {
+    // Hard timeout wrapper - if place takes >30s, skip it
+    return await Promise.race([
+      this._scrapePlaceDetailsInternal(placeLink),
+      new Promise<null>((resolve) =>
+        setTimeout(() => {
+          console.log('  ⏱️  Timeout 30s - skipping')
+          resolve(null)
+        }, 30000)
+      ),
+    ])
+  }
+
+  private async _scrapePlaceDetailsInternal(
+    placeLink: string
+  ): Promise<ScrapedPlaceData | null> {
     if (!this.page) return null
 
     try {
@@ -268,11 +300,11 @@ export class GoogleMapsScraper {
 
       await this.page.goto(fullUrl, {
         waitUntil: 'networkidle2',
-        timeout: 30000,
+        timeout: 15000, // Reduced from 30000
       })
 
       // Wait for place details to load
-      await this.page.waitForSelector('h1', { timeout: 10000 })
+      await this.page.waitForSelector('h1', { timeout: 5000 }) // Reduced from 10000
 
       // Extract place ID from URL
       const placeId = await this.extractPlaceId()

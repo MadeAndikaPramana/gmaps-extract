@@ -58,10 +58,10 @@ export async function POST(request: NextRequest) {
       keywords,
       locations,
       maxResultsPerKeyword = 500,
-      minDelay = 4000, // Increased for 3 concurrent workers
-      maxDelay = 6000, // Increased for 3 concurrent workers
+      minDelay = 2000, // Optimized for speed with 3 concurrent workers
+      maxDelay = 4000, // Optimized for speed with 3 concurrent workers
       cooldownAfter = 50,
-      cooldownDuration = 90000, // Increased for 3 concurrent workers
+      cooldownDuration = 60000, // Optimized for better throughput
     } = body
 
     // Validation
