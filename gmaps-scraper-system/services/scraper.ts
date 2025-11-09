@@ -314,23 +314,20 @@ export class GoogleMapsScraper {
         return null
       }
 
-      // Extract all data. Use a raw string evaluate to avoid bundler/runtime helper
-      // injections (some bundlers inject helpers like `__name` which are not
-      // available in the page context and cause ReferenceError). Passing a
-      // plain string keeps the code executed inside the page clean.
-      const data = await (this.page as any).evaluate(`(() => {
-        function getText(selector) {
-          const el = document.querySelector(selector);
-          return el && el.textContent ? el.textContent.trim() : undefined;
+      // Extract all data
+      const data = await this.page.evaluate(() => {
+        const getText = (selector) => {
+          const el = document.querySelector(selector)
+          return el?.textContent?.trim() || undefined
         }
 
-        function getAttribute(selector, attr) {
-          const el = document.querySelector(selector);
-          return el ? el.getAttribute(attr) : undefined;
+        const getAttribute = (selector, attr) => {
+          const el = document.querySelector(selector)
+          return el?.getAttribute(attr) || undefined
         }
 
         // Name
-        const name = getText('h1') || undefined;
+        const name = getText('h1')
 
         // Address
         const addressButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(btn =>
@@ -341,7 +338,7 @@ export class GoogleMapsScraper {
           : undefined;
 
         // City - extracted from address
-        let city: string | undefined
+        let city
         if (address) {
           // Try to extract city from address (usually second-to-last part before country)
           const addressParts = address.split(',').map(p => p.trim())
@@ -353,8 +350,8 @@ export class GoogleMapsScraper {
 
         // Rating and reviews - improved extraction
         const ratingEl = document.querySelector('[role="img"][aria-label*="star"]')
-        let rating: number | undefined
-        let reviewsCount: number | undefined
+        let rating
+        let reviewsCount
 
         if (ratingEl) {
           const ratingText = ratingEl.getAttribute('aria-label') || ''
@@ -385,10 +382,10 @@ export class GoogleMapsScraper {
           : undefined;
 
         // Website
-        const websiteLink = Array.from(document.querySelectorAll('a[data-item-id]')).find(link =>
-          link.getAttribute('data-item-id') && link.getAttribute('data-item-id').includes('authority')
-        );
-        const website = websiteLink ? websiteLink.href : undefined;
+        const websiteLink = Array.from(document.querySelectorAll('a[data-item-id]')).find(
+          (link) => link.getAttribute('data-item-id')?.includes('authority')
+        )
+        const website = websiteLink?.href
 
         // Business status
         const statusEl = document.querySelector('[class*=\"operational\"]');
@@ -489,7 +486,7 @@ export class GoogleMapsScraper {
     try {
       return await this.page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a[href]'))
-        const result: any = {}
+        const result = {}
 
         links.forEach((link) => {
           const href = link.getAttribute('href') || ''
@@ -530,7 +527,7 @@ export class GoogleMapsScraper {
           if (!table) return null
 
           const rows = Array.from(table.querySelectorAll('tr'))
-          const schedule: any = {}
+          const schedule = {}
 
           rows.forEach((row) => {
             const cells = Array.from(row.querySelectorAll('td'))
