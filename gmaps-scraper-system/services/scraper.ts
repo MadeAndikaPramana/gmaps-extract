@@ -109,9 +109,14 @@ export class GoogleMapsScraper {
       console.log(`Found ${placeLinks.length} places for "${searchQuery}"`)
 
       const scrapedData: ScrapedPlaceData[] = []
+      const totalPlaces = placeLinks.length
 
-      for (const link of placeLinks) {
+      for (let i = 0; i < placeLinks.length; i++) {
+        const link = placeLinks[i]
+
         try {
+          console.log(`  [${i + 1}/${totalPlaces}] Scraping place...`)
+
           // Check session health
           await this.checkAndRestartSession()
 
@@ -126,6 +131,7 @@ export class GoogleMapsScraper {
           const placeData = await this.scrapePlaceDetails(link)
 
           if (placeData) {
+            console.log(`  ✓ ${placeData.name}`)
             scrapedData.push(placeData)
             this.placesScrapedInSession++
 
@@ -133,16 +139,19 @@ export class GoogleMapsScraper {
             if (scrapedData.length % 50 === 0) {
               await cooldownDelay()
             }
+          } else {
+            console.log(`  ✗ Failed to extract data`)
           }
         } catch (error: any) {
           if (error.message === 'CAPTCHA_DETECTED') {
             throw error
           }
-          console.error(`Error scraping place ${link}:`, error)
+          console.log(`  ✗ Error: ${error.message}`)
           continue
         }
       }
 
+      console.log(`Completed! Scraped ${scrapedData.length} places`)
       return scrapedData
     } catch (error: any) {
       if (error.message === 'CAPTCHA_DETECTED') {
@@ -156,10 +165,16 @@ export class GoogleMapsScraper {
   private async scrollResults(): Promise<void> {
     if (!this.page) return
 
+    console.log('📜 Scrolling to load all results...')
+
     try {
       const feedSelector = '[role="feed"]'
+      let previousCount = 0
+      let noChangeCount = 0
+      const maxScrolls = 40
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < maxScrolls; i++) {
+        // Scroll to bottom
         await this.page.evaluate((selector) => {
           const feed = document.querySelector(selector)
           if (feed) {
@@ -167,16 +182,52 @@ export class GoogleMapsScraper {
           }
         }, feedSelector)
 
-        await humanDelay(1000, 2000)
+        // Wait 2-3 seconds for lazy-loading
+        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000))
+
+        // Count current results
+        const currentCount = await this.page.evaluate(() => {
+          const links = document.querySelectorAll('a[href*="/maps/place/"]')
+          return links.length
+        })
+
+        console.log(`→ Scroll ${i + 1}: Found ${currentCount} places`)
 
         // Check if we've reached the end
         const endOfResults = await this.page.evaluate(() => {
-          const text = document.body.innerText
-          return text.includes("You've reached the end of the list")
+          const text = document.body.innerText.toLowerCase()
+          return text.includes("you've reached the end of the list") ||
+                 text.includes("you've reached the end") ||
+                 text.includes("anda telah mencapai akhir") ||
+                 text.includes("no more results")
         })
 
-        if (endOfResults) break
+        if (endOfResults) {
+          console.log(`✓ Reached end of list after ${i + 1} scrolls`)
+          break
+        }
+
+        // Check if no new results appeared
+        if (currentCount === previousCount) {
+          noChangeCount++
+          if (noChangeCount >= 3) {
+            console.log(`✓ No new results after 3 consecutive scrolls (${i + 1} total scrolls)`)
+            break
+          }
+        } else {
+          noChangeCount = 0
+        }
+
+        previousCount = currentCount
       }
+
+      // Get final count
+      const finalCount = await this.page.evaluate(() => {
+        const links = document.querySelectorAll('a[href*="/maps/place/"]')
+        return links.length
+      })
+
+      console.log(`✓ Total places loaded: ${finalCount}`)
     } catch (error) {
       console.error('Error scrolling results:', error)
     }
@@ -217,7 +268,7 @@ export class GoogleMapsScraper {
 
       await this.page.goto(fullUrl, {
         waitUntil: 'networkidle2',
-        timeout: 60000,
+        timeout: 30000,
       })
 
       // Wait for place details to load

@@ -107,8 +107,11 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
             const limitedPlaces = places.slice(0, maxResultsPerKeyword)
 
             // Save to database
-            for (const place of limitedPlaces) {
+            for (let placeIndex = 0; placeIndex < limitedPlaces.length; placeIndex++) {
+              const place = limitedPlaces[placeIndex]
               try {
+                console.log(`[${workerId}] >>> Saving place ${placeIndex + 1}/${limitedPlaces.length}: ${place.name}`)
+
                 await prisma.scrapedPlace.create({
                   data: {
                     jobId,
@@ -136,6 +139,7 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
                 })
 
                 totalScraped++
+                console.log(`[${workerId}] ✓ Saved successfully. Total: ${totalScraped}`)
 
                 // Update progress
                 await prisma.job.update({
