@@ -316,18 +316,18 @@ export class GoogleMapsScraper {
 
       // Extract all data
       const data = await this.page.evaluate(() => {
-        const getText = (selector: string): string | undefined => {
+        const getText = (selector) => {
           const el = document.querySelector(selector)
           return el?.textContent?.trim() || undefined
         }
 
-        const getAttribute = (selector: string, attr: string): string | undefined => {
+        const getAttribute = (selector, attr) => {
           const el = document.querySelector(selector)
           return el?.getAttribute(attr) || undefined
         }
 
         // Name
-        const name = getText('h1')!
+        const name = getText('h1')
 
         // Address
         const addressButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(
@@ -336,7 +336,7 @@ export class GoogleMapsScraper {
         const address = addressButton?.getAttribute('aria-label')?.replace('Address: ', '')
 
         // City - extracted from address
-        let city: string | undefined
+        let city
         if (address) {
           // Try to extract city from address (usually second-to-last part before country)
           const addressParts = address.split(',').map(p => p.trim())
@@ -348,8 +348,8 @@ export class GoogleMapsScraper {
 
         // Rating and reviews - improved extraction
         const ratingEl = document.querySelector('[role="img"][aria-label*="star"]')
-        let rating: number | undefined
-        let reviewsCount: number | undefined
+        let rating
+        let reviewsCount
 
         if (ratingEl) {
           const ratingText = ratingEl.getAttribute('aria-label') || ''
@@ -380,7 +380,7 @@ export class GoogleMapsScraper {
         // Website
         const websiteLink = Array.from(document.querySelectorAll('a[data-item-id]')).find(
           (link) => link.getAttribute('data-item-id')?.includes('authority')
-        ) as HTMLAnchorElement
+        )
         const website = websiteLink?.href
 
         // Business status
@@ -480,7 +480,7 @@ export class GoogleMapsScraper {
     try {
       return await this.page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a[href]'))
-        const result: any = {}
+        const result = {}
 
         links.forEach((link) => {
           const href = link.getAttribute('href') || ''
@@ -521,7 +521,7 @@ export class GoogleMapsScraper {
           if (!table) return null
 
           const rows = Array.from(table.querySelectorAll('tr'))
-          const schedule: any = {}
+          const schedule = {}
 
           rows.forEach((row) => {
             const cells = Array.from(row.querySelectorAll('td'))
