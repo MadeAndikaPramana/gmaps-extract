@@ -112,6 +112,7 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
               try {
                 console.log(`[${workerId}] >>> Saving place ${placeIndex + 1}/${limitedPlaces.length}: ${place.name}`)
 
+                const dbStartTime = Date.now()
                 await prisma.scrapedPlace.create({
                   data: {
                     jobId,
@@ -137,9 +138,10 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
                     about: place.about,
                   },
                 })
+                const dbDuration = Date.now() - dbStartTime
 
                 totalScraped++
-                console.log(`[${workerId}] ✓ Saved successfully. Total: ${totalScraped}`)
+                console.log(`[${workerId}] ✓ Saved in ${dbDuration}ms. Total: ${totalScraped}`)
 
                 // Update progress
                 await prisma.job.update({
@@ -234,8 +236,12 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
 
           const limitedPlaces = places.slice(0, maxResultsPerKeyword)
 
-          for (const place of limitedPlaces) {
+          for (let placeIndex = 0; placeIndex < limitedPlaces.length; placeIndex++) {
+            const place = limitedPlaces[placeIndex]
             try {
+              console.log(`[${workerId}] >>> Saving place ${placeIndex + 1}/${limitedPlaces.length}: ${place.name}`)
+
+              const dbStartTime = Date.now()
               await prisma.scrapedPlace.create({
                 data: {
                   jobId,
@@ -261,8 +267,10 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
                   about: place.about,
                 },
               })
+              const dbDuration = Date.now() - dbStartTime
 
               totalScraped++
+              console.log(`[${workerId}] ✓ Saved in ${dbDuration}ms. Total: ${totalScraped}`)
 
               await prisma.job.update({
                 where: { id: jobId },

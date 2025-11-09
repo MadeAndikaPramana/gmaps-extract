@@ -28,18 +28,18 @@ export function sleep(ms: number): Promise<void> {
 
 /**
  * Get a human-like delay between actions
- * Defaults increased to 4-6 seconds for 3 concurrent workers
+ * Optimized to 2-4 seconds for speed with 3 concurrent workers
  */
-export async function humanDelay(minMs = 4000, maxMs = 6000): Promise<void> {
+export async function humanDelay(minMs = 2000, maxMs = 4000): Promise<void> {
   const delay = getRandomDelay(minMs, maxMs)
   await sleep(delay)
 }
 
 /**
  * Cooldown period after scraping multiple items
- * Increased to 90 seconds for 3 concurrent workers
+ * Optimized to 60 seconds for better throughput
  */
-export async function cooldownDelay(durationMs = 90000): Promise<void> {
+export async function cooldownDelay(durationMs = 60000): Promise<void> {
   console.log(`⏸️  Cooldown period: ${durationMs / 1000} seconds...`)
   await sleep(durationMs)
 }
