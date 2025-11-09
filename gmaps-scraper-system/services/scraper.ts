@@ -231,64 +231,73 @@ export class GoogleMapsScraper {
         return null
       }
 
-      // Extract all data
-      const data = await this.page.evaluate(() => {
-        const getText = (selector: string): string | undefined => {
-          const el = document.querySelector(selector)
-          return el?.textContent?.trim() || undefined
+      // Extract all data. Use a raw string evaluate to avoid bundler/runtime helper
+      // injections (some bundlers inject helpers like `__name` which are not
+      // available in the page context and cause ReferenceError). Passing a
+      // plain string keeps the code executed inside the page clean.
+      const data = await (this.page as any).evaluate(`(() => {
+        function getText(selector) {
+          const el = document.querySelector(selector);
+          return el && el.textContent ? el.textContent.trim() : undefined;
         }
 
-        const getAttribute = (selector: string, attr: string): string | undefined => {
-          const el = document.querySelector(selector)
-          return el?.getAttribute(attr) || undefined
+        function getAttribute(selector, attr) {
+          const el = document.querySelector(selector);
+          return el ? el.getAttribute(attr) : undefined;
         }
 
         // Name
-        const name = getText('h1')!
+        const name = getText('h1') || undefined;
 
         // Address
-        const addressButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(
-          (btn) => btn.getAttribute('data-item-id')?.includes('address')
-        )
-        const address = addressButton?.getAttribute('aria-label')?.replace('Address: ', '')
+        const addressButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(btn =>
+          btn.getAttribute('data-item-id') && btn.getAttribute('data-item-id').includes('address')
+        );
+        const address = addressButton && addressButton.getAttribute('aria-label')
+          ? addressButton.getAttribute('aria-label').replace('Address: ', '')
+          : undefined;
 
         // Rating and reviews
-        const ratingText = getText('[role="img"][aria-label*="stars"]')
-        const rating = ratingText ? parseFloat(ratingText.split(' ')[0]) : undefined
-        const reviewsText = getText('[role="img"][aria-label*="reviews"]')
+        const ratingText = getText('[role="img"][aria-label*="stars"]');
+        const rating = ratingText ? parseFloat(ratingText.split(' ')[0]) : undefined;
+        const reviewsText = getText('[role="img"][aria-label*="reviews"]');
         const reviewsCount = reviewsText
-          ? parseInt(reviewsText.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || '0')
-          : undefined
+          ? parseInt((reviewsText.match(/[\\d,]+/) || ['0'])[0].replace(/,/g, ''))
+          : undefined;
 
         // Phone
-        const phoneButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(
-          (btn) => btn.getAttribute('data-item-id')?.includes('phone')
-        )
-        const phone = phoneButton?.getAttribute('aria-label')?.replace('Phone: ', '')
+        const phoneButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(btn =>
+          btn.getAttribute('data-item-id') && btn.getAttribute('data-item-id').includes('phone')
+        );
+        const phone = phoneButton && phoneButton.getAttribute('aria-label')
+          ? phoneButton.getAttribute('aria-label').replace('Phone: ', '')
+          : undefined;
 
         // Website
-        const websiteLink = Array.from(document.querySelectorAll('a[data-item-id]')).find(
-          (link) => link.getAttribute('data-item-id')?.includes('authority')
-        ) as HTMLAnchorElement
-        const website = websiteLink?.href
+        const websiteLink = Array.from(document.querySelectorAll('a[data-item-id]')).find(link =>
+          link.getAttribute('data-item-id') && link.getAttribute('data-item-id').includes('authority')
+        );
+        const website = websiteLink ? websiteLink.href : undefined;
 
         // Business status
-        const statusEl = document.querySelector('[class*="operational"]')
-        const businessStatus = statusEl?.textContent?.trim()
+        const statusEl = document.querySelector('[class*=\"operational\"]');
+        const businessStatus = statusEl && statusEl.textContent ? statusEl.textContent.trim() : undefined;
 
         // Business types
-        const typeButton = document.querySelector('button[jsaction*="category"]')
-        const businessTypes = typeButton?.textContent?.trim()
+        const typeButton = document.querySelector('button[jsaction*=\"category\"]');
+        const businessTypesText = typeButton && typeButton.textContent ? typeButton.textContent.trim() : undefined;
 
         // Plus code
-        const plusCodeButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(
-          (btn) => btn.getAttribute('data-item-id')?.includes('plus_code')
-        )
-        const plusCode = plusCodeButton?.getAttribute('aria-label')?.replace('Plus code: ', '')
+        const plusCodeButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(btn =>
+          btn.getAttribute('data-item-id') && btn.getAttribute('data-item-id').includes('plus_code')
+        );
+        const plusCode = plusCodeButton && plusCodeButton.getAttribute('aria-label')
+          ? plusCodeButton.getAttribute('aria-label').replace('Plus code: ', '')
+          : undefined;
 
         // About
-        const aboutSection = document.querySelector('[aria-label*="About"]')
-        const about = aboutSection?.textContent?.trim()
+        const aboutSection = document.querySelector('[aria-label*=\"About\"]');
+        const about = aboutSection && aboutSection.textContent ? aboutSection.textContent.trim() : undefined;
 
         return {
           name,
@@ -298,11 +307,11 @@ export class GoogleMapsScraper {
           phone,
           website,
           businessStatus,
-          businessTypes: businessTypes ? [businessTypes] : undefined,
+          businessTypes: businessTypesText ? [businessTypesText] : undefined,
           plusCode,
-          about,
-        }
-      })
+          about
+        };
+      })()`)
 
       // Extract coordinates from URL
       const coordinates = this.extractCoordinates(this.page.url())

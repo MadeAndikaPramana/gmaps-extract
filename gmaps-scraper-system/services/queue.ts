@@ -1,5 +1,8 @@
 import Bull from 'bull'
-import { redis } from '@/lib/redis'
+// Impor 'redis' standar dihapus
+// import { redis } from '@/lib/redis' 
+// Impor fungsi konfigurasi khusus Bull ditambahkan
+import { getBullRedisConfig } from '@/lib/redis'
 
 export interface ScrapeJobData {
   jobId: string
@@ -16,18 +19,9 @@ export interface ScrapeJobData {
 
 // Create the scrape queue
 export const scrapeQueue = new Bull<ScrapeJobData>('gmaps-scrape', {
-  createClient: (type) => {
-    switch (type) {
-      case 'client':
-        return redis
-      case 'subscriber':
-        return redis.duplicate()
-      case 'bclient':
-        return redis.duplicate()
-      default:
-        return redis.duplicate()
-    }
-  },
+  // Blok 'createClient' yang lama diganti dengan properti 'redis'
+  redis: getBullRedisConfig(),
+  
   defaultJobOptions: {
     attempts: 3,
     backoff: {
