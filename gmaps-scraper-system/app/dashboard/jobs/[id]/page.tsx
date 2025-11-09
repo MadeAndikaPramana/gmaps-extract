@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { ArrowLeft, Download, Pause, Play, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Download, Pause, Play, RefreshCw, Trash2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 interface JobDetail {
@@ -59,6 +59,7 @@ interface JobDetail {
 
 export default function JobDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const jobId = params.id as string
   const [job, setJob] = useState<JobDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -114,6 +115,30 @@ export default function JobDetailPage() {
       }
     } catch (error) {
       console.error('Error resuming job:', error)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!confirm('Are you sure you want to delete this job? This will permanently delete all scraped data and cannot be undone.')) {
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      const response = await fetch(`/api/jobs/${jobId}`, {
+        method: 'DELETE',
+      })
+      const data = await response.json()
+      if (data.success) {
+        router.push('/dashboard/jobs')
+      } else {
+        alert('Failed to delete job: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Error deleting job:', error)
+      alert('Failed to delete job')
     } finally {
       setActionLoading(false)
     }
@@ -205,6 +230,15 @@ export default function JobDetailPage() {
                   </Button>
                 </a>
               )}
+              <Button
+                onClick={handleDelete}
+                disabled={actionLoading}
+                variant="destructive"
+                size="sm"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Job
+              </Button>
             </div>
           </div>
         </div>

@@ -45,6 +45,9 @@ model Job {
   pauseReason           String?
   errorMessage          String?
 
+  // Field configuration
+  fieldsToScrape        Json?         // Array of field names to scrape: ["phone", "rating", "city", "businessInfo", "coordinates", "socialMedia"]
+
   // Metadata
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt

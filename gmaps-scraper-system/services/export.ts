@@ -11,6 +11,14 @@ export interface ExportOptions {
 export async function generateCSV(options: ExportOptions): Promise<string> {
   const { jobId, includeAllFields = true } = options
 
+  // Get job to check fieldsToScrape configuration
+  const job = await prisma.job.findUnique({ where: { id: jobId } })
+  if (!job) {
+    throw new Error('Job not found')
+  }
+
+  const fieldsToScrape = (job.fieldsToScrape as string[]) || []
+
   // Get all scraped places for this job
   const places = await prisma.scrapedPlace.findMany({
     where: { jobId },
@@ -32,29 +40,39 @@ export async function generateCSV(options: ExportOptions): Promise<string> {
   const filename = `job_${jobId}_${timestamp}.csv`
   const filepath = path.join(exportsDir, filename)
 
-  // Define CSV headers
+  // Define CSV headers - always include basic fields
   const headers = [
     { id: 'name', title: 'Name' },
     { id: 'address', title: 'Address' },
-    { id: 'city', title: 'City' },
-    { id: 'rating', title: 'Rating' },
-    { id: 'reviewsCount', title: 'Reviews Count' },
-    { id: 'phone', title: 'Phone' },
     { id: 'website', title: 'Website' },
-    { id: 'email', title: 'Email' },
-    { id: 'facebook', title: 'Facebook' },
-    { id: 'instagram', title: 'Instagram' },
-    { id: 'twitter', title: 'Twitter' },
-    { id: 'linkedin', title: 'LinkedIn' },
-    { id: 'plusCode', title: 'Plus Code' },
-    { id: 'latitude', title: 'Latitude' },
-    { id: 'longitude', title: 'Longitude' },
-    { id: 'businessStatus', title: 'Business Status' },
-    { id: 'businessTypes', title: 'Business Types' },
-    { id: 'openingHours', title: 'Opening Hours' },
-    { id: 'about', title: 'About' },
     { id: 'placeId', title: 'Place ID' },
   ]
+
+  // Add optional fields based on job configuration
+  if (fieldsToScrape.includes('city')) {
+    headers.push({ id: 'city', title: 'City' })
+  }
+  if (fieldsToScrape.includes('rating')) {
+    headers.push({ id: 'rating', title: 'Rating' })
+    headers.push({ id: 'reviewsCount', title: 'Reviews Count' })
+  }
+  if (fieldsToScrape.includes('phone')) {
+    headers.push({ id: 'phone', title: 'Phone' })
+  }
+  if (fieldsToScrape.includes('coordinates')) {
+    headers.push({ id: 'latitude', title: 'Latitude' })
+    headers.push({ id: 'longitude', title: 'Longitude' })
+  }
+  if (fieldsToScrape.includes('businessInfo')) {
+    headers.push({ id: 'businessStatus', title: 'Business Status' })
+    headers.push({ id: 'businessTypes', title: 'Business Types' })
+  }
+  if (fieldsToScrape.includes('socialMedia')) {
+    headers.push({ id: 'facebook', title: 'Facebook' })
+    headers.push({ id: 'instagram', title: 'Instagram' })
+    headers.push({ id: 'twitter', title: 'Twitter' })
+    headers.push({ id: 'linkedin', title: 'LinkedIn' })
+  }
 
   // Create CSV writer
   const csvWriter = createObjectCsvWriter({
@@ -62,35 +80,46 @@ export async function generateCSV(options: ExportOptions): Promise<string> {
     header: headers,
   })
 
-  // Transform data for CSV
-  const records = places.map((place) => ({
-    name: place.name || '',
-    address: place.address || '',
-    city: place.city || '',
-    rating: place.rating?.toString() || '',
-    reviewsCount: place.reviewsCount?.toString() || '',
-    phone: place.phone || '',
-    website: place.website || '',
-    email: place.email || '',
-    facebook: place.facebook || '',
-    instagram: place.instagram || '',
-    twitter: place.twitter || '',
-    linkedin: place.linkedin || '',
-    plusCode: place.plusCode || '',
-    latitude: place.latitude?.toString() || '',
-    longitude: place.longitude?.toString() || '',
-    businessStatus: place.businessStatus || '',
-    businessTypes:
-      place.businessTypes && Array.isArray(place.businessTypes)
-        ? (place.businessTypes as string[]).join(', ')
-        : '',
-    openingHours:
-      place.openingHours && typeof place.openingHours === 'object'
-        ? JSON.stringify(place.openingHours)
-        : '',
-    about: place.about || '',
-    placeId: place.placeId || '',
-  }))
+  // Transform data for CSV - only include selected fields
+  const records = places.map((place) => {
+    const record: any = {
+      name: place.name || '',
+      address: place.address || '',
+      website: place.website || '',
+      placeId: place.placeId || '',
+    }
+
+    // Add optional fields based on job configuration
+    if (fieldsToScrape.includes('city')) {
+      record.city = place.city || ''
+    }
+    if (fieldsToScrape.includes('rating')) {
+      record.rating = place.rating?.toString() || ''
+      record.reviewsCount = place.reviewsCount?.toString() || ''
+    }
+    if (fieldsToScrape.includes('phone')) {
+      record.phone = place.phone || ''
+    }
+    if (fieldsToScrape.includes('coordinates')) {
+      record.latitude = place.latitude?.toString() || ''
+      record.longitude = place.longitude?.toString() || ''
+    }
+    if (fieldsToScrape.includes('businessInfo')) {
+      record.businessStatus = place.businessStatus || ''
+      record.businessTypes =
+        place.businessTypes && Array.isArray(place.businessTypes)
+          ? (place.businessTypes as string[]).join(', ')
+          : ''
+    }
+    if (fieldsToScrape.includes('socialMedia')) {
+      record.facebook = place.facebook || ''
+      record.instagram = place.instagram || ''
+      record.twitter = place.twitter || ''
+      record.linkedin = place.linkedin || ''
+    }
+
+    return record
+  })
 
   // Write CSV
   await csvWriter.writeRecords(records)

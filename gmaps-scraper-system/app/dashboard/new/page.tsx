@@ -21,6 +21,14 @@ export default function NewJobPage() {
     maxDelay: 4000, // Optimized for speed with 3 concurrent workers
     cooldownAfter: 50,
     cooldownDuration: 60000, // Optimized for better throughput
+    fieldsToScrape: {
+      phone: true,
+      rating: true,
+      city: true,
+      businessInfo: true,
+      coordinates: true,
+      socialMedia: false, // Rarely available on Google Maps
+    },
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,6 +47,11 @@ export default function NewJobPage() {
         return
       }
 
+      // Convert fieldsToScrape object to array
+      const fieldsToScrapeArray = Object.entries(formData.fieldsToScrape)
+        .filter(([_, enabled]) => enabled)
+        .map(([field, _]) => field)
+
       const payload = {
         clientName: formData.clientName,
         keywords,
@@ -48,6 +61,7 @@ export default function NewJobPage() {
         maxDelay: formData.maxDelay,
         cooldownAfter: formData.cooldownAfter,
         cooldownDuration: formData.cooldownDuration,
+        fieldsToScrape: fieldsToScrapeArray,
       }
 
       const response = await fetch('/api/jobs', {
@@ -263,6 +277,147 @@ export default function NewJobPage() {
                     </Button>
                   </div>
                 ))}
+              </CardContent>
+            </Card>
+
+            {/* Fields to Scrape */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Fields to Scrape</CardTitle>
+                <CardDescription>
+                  Select which data fields to extract. Name, Address, Website, and Place ID are always included.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      id="phone"
+                      className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      checked={formData.fieldsToScrape.phone}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fieldsToScrape: { ...formData.fieldsToScrape, phone: e.target.checked },
+                        })
+                      }
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="phone" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        Phone Number
+                      </label>
+                      <p className="text-xs text-gray-500">70-80% availability on Google Maps</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      id="rating"
+                      className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      checked={formData.fieldsToScrape.rating}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fieldsToScrape: { ...formData.fieldsToScrape, rating: e.target.checked },
+                        })
+                      }
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="rating" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        Rating & Reviews Count
+                      </label>
+                      <p className="text-xs text-gray-500">90% availability on Google Maps</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      id="city"
+                      className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      checked={formData.fieldsToScrape.city}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fieldsToScrape: { ...formData.fieldsToScrape, city: e.target.checked },
+                        })
+                      }
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="city" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        City
+                      </label>
+                      <p className="text-xs text-gray-500">Extracted from address - 70%+ availability</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      id="businessInfo"
+                      className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      checked={formData.fieldsToScrape.businessInfo}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fieldsToScrape: { ...formData.fieldsToScrape, businessInfo: e.target.checked },
+                        })
+                      }
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="businessInfo" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        Business Status & Type
+                      </label>
+                      <p className="text-xs text-gray-500">60-80% availability on Google Maps</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      id="coordinates"
+                      className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      checked={formData.fieldsToScrape.coordinates}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fieldsToScrape: { ...formData.fieldsToScrape, coordinates: e.target.checked },
+                        })
+                      }
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="coordinates" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        GPS Coordinates (Latitude/Longitude)
+                      </label>
+                      <p className="text-xs text-gray-500">95%+ availability on Google Maps</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      id="socialMedia"
+                      className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      checked={formData.fieldsToScrape.socialMedia}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fieldsToScrape: { ...formData.fieldsToScrape, socialMedia: e.target.checked },
+                        })
+                      }
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="socialMedia" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        Social Media Links (Facebook, Instagram, etc.)
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        10-15% availability on Google Maps (not recommended - better obtained from websites)
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
