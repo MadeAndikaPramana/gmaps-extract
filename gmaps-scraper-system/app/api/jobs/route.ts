@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       maxDelay = 4000, // Optimized for speed with 3 concurrent workers
       cooldownAfter = 50,
       cooldownDuration = 60000, // Optimized for better throughput
+      fieldsToScrape = ['phone', 'rating', 'city', 'businessInfo', 'coordinates'], // Default fields
     } = body
 
     // Validation
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
         maxDelay,
         cooldownAfter,
         cooldownDuration,
+        fieldsToScrape,
         estimatedDuration,
         status: 'PENDING',
       },

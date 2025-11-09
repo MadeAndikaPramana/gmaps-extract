@@ -335,13 +335,41 @@ export class GoogleMapsScraper {
         )
         const address = addressButton?.getAttribute('aria-label')?.replace('Address: ', '')
 
-        // Rating and reviews
-        const ratingText = getText('[role="img"][aria-label*="stars"]')
-        const rating = ratingText ? parseFloat(ratingText.split(' ')[0]) : undefined
-        const reviewsText = getText('[role="img"][aria-label*="reviews"]')
-        const reviewsCount = reviewsText
-          ? parseInt(reviewsText.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || '0')
-          : undefined
+        // City - extracted from address
+        let city: string | undefined
+        if (address) {
+          // Try to extract city from address (usually second-to-last part before country)
+          const addressParts = address.split(',').map(p => p.trim())
+          if (addressParts.length >= 2) {
+            // Get second-to-last part (usually city)
+            city = addressParts[addressParts.length - 2]
+          }
+        }
+
+        // Rating and reviews - improved extraction
+        const ratingEl = document.querySelector('[role="img"][aria-label*="star"]')
+        let rating: number | undefined
+        let reviewsCount: number | undefined
+
+        if (ratingEl) {
+          const ratingText = ratingEl.getAttribute('aria-label') || ''
+          const ratingMatch = ratingText.match(/[\d.]+/)
+          rating = ratingMatch ? parseFloat(ratingMatch[0]) : undefined
+        }
+
+        // Find reviews button
+        const reviewsButton = Array.from(document.querySelectorAll('button')).find(
+          (btn) => {
+            const ariaLabel = btn.getAttribute('aria-label') || ''
+            return ariaLabel.includes('review') || ariaLabel.includes('reviews')
+          }
+        )
+
+        if (reviewsButton) {
+          const reviewsText = reviewsButton.getAttribute('aria-label') || ''
+          const reviewsMatch = reviewsText.match(/[\d,]+/)
+          reviewsCount = reviewsMatch ? parseInt(reviewsMatch[0].replace(/,/g, '')) : undefined
+        }
 
         // Phone
         const phoneButton = Array.from(document.querySelectorAll('button[data-item-id]')).find(
@@ -376,6 +404,7 @@ export class GoogleMapsScraper {
         return {
           name,
           address,
+          city,
           rating,
           reviewsCount,
           phone,
