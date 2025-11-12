@@ -34,6 +34,8 @@ interface JobDetail {
     rating: number | null
     phone: string | null
     website: string | null
+    email: string | null
+    emailScrapingStatus: string
     scrapedAt: string
   }>
   failedScrapes: Array<{
@@ -409,6 +411,8 @@ export default function JobDetailPage() {
                       <th className="px-4 py-2 text-left">Address</th>
                       <th className="px-4 py-2 text-left">Rating</th>
                       <th className="px-4 py-2 text-left">Phone</th>
+                      <th className="px-4 py-2 text-left">Email</th>
+                      <th className="px-4 py-2 text-left">Email Status</th>
                       <th className="px-4 py-2 text-left">Scraped</th>
                     </tr>
                   </thead>
@@ -419,6 +423,16 @@ export default function JobDetailPage() {
                         <td className="px-4 py-2 text-gray-600">{place.address || '-'}</td>
                         <td className="px-4 py-2">{place.rating || '-'}</td>
                         <td className="px-4 py-2">{place.phone || '-'}</td>
+                        <td className="px-4 py-2">{place.email || '-'}</td>
+                        <td className="px-4 py-2">
+                          <Badge variant={
+                            place.emailScrapingStatus === 'DONE' ? 'default' :
+                            place.emailScrapingStatus === 'SCRAPING' ? 'secondary' :
+                            'outline'
+                          }>
+                            {place.emailScrapingStatus}
+                          </Badge>
+                        </td>
                         <td className="px-4 py-2 text-gray-500">
                           {formatDistanceToNow(new Date(place.scrapedAt), { addSuffix: true })}
                         </td>

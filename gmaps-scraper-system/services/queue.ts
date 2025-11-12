@@ -17,6 +17,12 @@ export interface ScrapeJobData {
   resumeFromIndex?: number
 }
 
+export interface EmailScrapeJobData {
+  placeId: string;
+  website: string;
+}
+
+
 // Create the scrape queue
 export const scrapeQueue = new Bull<ScrapeJobData>('gmaps-scrape', {
   // Blok 'createClient' yang lama diganti dengan properti 'redis'
@@ -37,12 +43,36 @@ export const scrapeQueue = new Bull<ScrapeJobData>('gmaps-scrape', {
   },
 })
 
+export const emailScrapeQueue = new Bull<EmailScrapeJobData>('email-scrape', {
+  redis: getBullRedisConfig(),
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 60000, // 1 minute
+    },
+    removeOnComplete: true,
+    removeOnFail: false,
+  },
+  settings: {
+    maxStalledCount: 2,
+    stalledInterval: 30000,
+  },
+});
+
 // Add job to queue
 export async function addScrapeJob(data: ScrapeJobData): Promise<Bull.Job<ScrapeJobData>> {
   return await scrapeQueue.add(data, {
     jobId: data.jobId, // Use our job ID as Bull job ID
     priority: 1,
   })
+}
+
+export async function addEmailScrapeJob(data: EmailScrapeJobData): Promise<Bull.Job<EmailScrapeJobData>> {
+  return await emailScrapeQueue.add(data, {
+    jobId: `email-${data.placeId}`,
+    priority: 3, // Lower priority than main scraping jobs
+  });
 }
 
 // Pause a specific job

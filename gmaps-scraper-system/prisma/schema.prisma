@@ -16,6 +16,13 @@ enum JobStatus {
   FAILED
 }
 
+enum EmailScrapingStatus {
+  PENDING
+  SCRAPING
+  DONE
+  FAILED
+}
+
 model Job {
   id                    String        @id @default(cuid())
   clientName            String
@@ -101,12 +108,16 @@ model ScrapedPlace {
   // Metadata
   scrapedAt         DateTime  @default(now())
 
+  // Email Scraping
+  emailScrapingStatus EmailScrapingStatus @default(PENDING)
+
   // Relations
   job               Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId])
   @@index([placeId])
   @@index([scrapedAt])
+  @@index([emailScrapingStatus])
 }
 
 model FailedScrape {

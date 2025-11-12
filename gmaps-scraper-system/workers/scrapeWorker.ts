@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { scrapeQueue, ScrapeJobData, jobEvents } from '@/services/queue'
+import { scrapeQueue, ScrapeJobData, jobEvents, addEmailScrapeJob } from '@/services/queue'
 import { GoogleMapsScraper } from '@/services/scraper'
 import { prisma } from '@/lib/prisma'
 import {
@@ -165,6 +165,14 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
                     totalEstimated: keywords.length * maxResultsPerKeyword,
                   })
                 }
+
+                // If website exists, queue for email scraping
+                if (place.website) {
+                  await addEmailScrapeJob({
+                    placeId: place.placeId,
+                    website: place.website,
+                  });
+                }
               } catch (error: any) {
                 // Handle duplicate place_id
                 if (error.code === 'P2002') {
@@ -290,6 +298,13 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
                   scrapedCount: totalScraped,
                   totalEstimated: keywords.length * maxResultsPerKeyword,
                 })
+              }
+
+              if (place.website) {
+                await addEmailScrapeJob({
+                  placeId: place.placeId,
+                  website: place.website,
+                });
               }
             } catch (error: any) {
               if (error.code === 'P2002') {
