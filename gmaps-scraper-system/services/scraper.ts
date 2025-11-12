@@ -75,14 +75,22 @@ export class GoogleMapsScraper {
 
   async searchPlaces(
     keyword: string,
-    location?: string
+    location?: string | { lat: number; lng: number }
   ): Promise<ScrapedPlaceData[]> {
     if (!this.page) {
       throw new Error('Browser not initialized')
     }
 
-    const searchQuery = location ? `${keyword} in ${location}` : keyword
-    const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`
+    let searchUrl: string;
+    let searchQuery: string;
+
+    if (typeof location === 'object' && location !== null) {
+      searchQuery = keyword;
+      searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}/@${location.lat},${location.lng},15z`;
+    } else {
+      searchQuery = location ? `${keyword} in ${location}` : keyword;
+      searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
+    }
 
     console.log(`Searching for: ${searchQuery}`)
 

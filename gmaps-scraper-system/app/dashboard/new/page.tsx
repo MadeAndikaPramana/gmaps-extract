@@ -16,6 +16,7 @@ export default function NewJobPage() {
     clientName: '',
     keywords: [''],
     locations: [''],
+    gridSize: 0,
     maxResultsPerKeyword: 500,
     minDelay: 2000, // Optimized for speed with 3 concurrent workers
     maxDelay: 4000, // Optimized for speed with 3 concurrent workers
@@ -62,6 +63,7 @@ export default function NewJobPage() {
         cooldownAfter: formData.cooldownAfter,
         cooldownDuration: formData.cooldownDuration,
         fieldsToScrape: fieldsToScrapeArray,
+        gridSize: formData.gridSize > 0 ? formData.gridSize : undefined,
       }
 
       const response = await fetch('/api/jobs', {
@@ -238,6 +240,27 @@ export default function NewJobPage() {
                     )}
                   </div>
                 ))}
+
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Grid Size (for large areas)
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.gridSize}
+                    onChange={(e) =>
+                      setFormData({ ...formData, gridSize: parseInt(e.target.value) })
+                    }
+                  >
+                    <option value="0">Disabled</option>
+                    <option value="3">3x3 (9 areas)</option>
+                    <option value="5">5x5 (25 areas)</option>
+                    <option value="10">10x10 (100 areas)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Use this for broad locations like "Bali" to get more results. It will automatically divide the area into a grid.
+                  </p>
+                </div>
               </CardContent>
             </Card>
 

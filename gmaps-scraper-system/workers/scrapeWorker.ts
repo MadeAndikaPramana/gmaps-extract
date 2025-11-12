@@ -97,11 +97,21 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
 
       console.log(`[${workerId}] 🔍 Processing keyword ${i + 1}/${keywords.length}: ${keyword}`)
 
+      const searchLocations = (dbJob.subLocations as any[])?.length ? dbJob.subLocations : (locations || []);
+
       // Process with or without locations
-      if (locations && locations.length > 0) {
-        for (const location of locations) {
+      if (searchLocations.length > 0) {
+        for (let j = 0; j < searchLocations.length; j++) {
+          const location = searchLocations[j];
           try {
             const places = await scraper.searchPlaces(keyword, location)
+
+            if(dbJob.subLocations) {
+                await prisma.job.update({
+                  where: { id: jobId },
+                  data: { currentSubLocationIndex: j + 1 },
+                });
+            }
 
             // Limit results per keyword
             const limitedPlaces = places.slice(0, maxResultsPerKeyword)
@@ -221,7 +231,7 @@ scrapeQueue.process(3, async (job: BullJob<ScrapeJobData>) => {
               data: {
                 jobId,
                 keyword,
-                location,
+                location: typeof location === 'object' ? JSON.stringify(location) : location,
                 errorType: error.name || 'UNKNOWN_ERROR',
                 errorMessage: error.message || 'Unknown error occurred',
               },

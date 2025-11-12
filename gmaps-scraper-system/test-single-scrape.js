@@ -3,9 +3,9 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
 (async () => {
-  console.log('1. Launching browser (visible)...');
+  console.log('1. Launching browser (headless)...');
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
   

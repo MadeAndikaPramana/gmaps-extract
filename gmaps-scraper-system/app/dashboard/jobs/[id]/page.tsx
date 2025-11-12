@@ -16,6 +16,9 @@ interface JobDetail {
   status: string
   keywords: string[]
   locations: string[] | null
+  gridSize: number | null
+  subLocations: any[] | null
+  currentSubLocationIndex: number
   maxResultsPerKeyword: number
   scrapedCount: number
   failedCount: number
@@ -260,7 +263,7 @@ export default function JobDetailPage() {
                     {job.scrapedCount.toLocaleString()} / ~{totalExpected.toLocaleString()} places
                   </span>
                   <span className="text-sm text-gray-500">
-                    {job.currentKeyword || 'Waiting to start...'}
+                    {job.gridSize ? `Processing area ${job.currentSubLocationIndex} of ${job.subLocations?.length}` : (job.currentKeyword || 'Waiting to start...')}
                   </span>
                 </div>
                 <Progress value={(job.scrapedCount / totalExpected) * 100} />
@@ -342,6 +345,12 @@ export default function JobDetailPage() {
                         ))}
                       </div>
                     </dd>
+                  </div>
+                )}
+                {job.gridSize && (
+                  <div>
+                    <dt className="font-medium text-gray-600">Grid Size</dt>
+                    <dd className="mt-1">{job.gridSize}x{job.gridSize}</dd>
                   </div>
                 )}
                 <div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { addScrapeJob } from '@/services/queue'
+import { getCoordsFromLocation, createGrid } from '@/utils/location';
 
 // GET /api/jobs - List all jobs
 export async function GET(request: NextRequest) {
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
       cooldownAfter = 50,
       cooldownDuration = 60000, // Optimized for better throughput
       fieldsToScrape = ['phone', 'rating', 'city', 'businessInfo', 'coordinates'], // Default fields
+      gridSize,
     } = body
 
     // Validation
@@ -80,6 +82,12 @@ export async function POST(request: NextRequest) {
     const scrapingTime = keywords.length * maxResultsPerKeyword * avgDelay
     const estimatedDuration = Math.round(scrapingTime + totalCooldownTime) // seconds
 
+    let subLocations = null;
+    if (gridSize && locations && locations.length > 0) {
+      const { lat, lng } = await getCoordsFromLocation(locations[0]);
+      subLocations = createGrid(lat, lng, gridSize);
+    }
+
     // Create job in database
     const job = await prisma.job.create({
       data: {
@@ -94,6 +102,8 @@ export async function POST(request: NextRequest) {
         fieldsToScrape,
         estimatedDuration,
         status: 'PENDING',
+        gridSize,
+        subLocations,
       },
     })
 

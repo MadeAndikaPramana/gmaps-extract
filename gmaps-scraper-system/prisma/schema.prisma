@@ -30,8 +30,13 @@ model Job {
   locations             Json?         // Optional array of locations
   maxResultsPerKeyword  Int           @default(500)
 
+  // Grid scraping
+  gridSize              Int?
+  subLocations          Json?         // Array of {lat, lng} objects
+
   // Progress tracking
   status                JobStatus     @default(PENDING)
+  currentSubLocationIndex Int         @default(0)
   scrapedCount          Int           @default(0)
   currentKeywordIndex   Int           @default(0)
   currentKeyword        String?
