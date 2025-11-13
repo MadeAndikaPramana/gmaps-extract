@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { addScrapeJob } from '@/services/queue'
-import { getCoordsFromLocation, createGrid } from '@/utils/location';
+import { getBoundaryBox, generateGrid } from '@/utils/geocoding';
 
 // GET /api/jobs - List all jobs
 export async function GET(request: NextRequest) {
@@ -84,8 +84,10 @@ export async function POST(request: NextRequest) {
 
     let subLocations = null;
     if (gridSize && locations && locations.length > 0) {
-      const { lat, lng } = await getCoordsFromLocation(locations[0]);
-      subLocations = createGrid(lat, lng, gridSize);
+      const boundingBox = await getBoundaryBox(locations[0]);
+      if (boundingBox) {
+        subLocations = generateGrid(boundingBox, gridSize);
+      }
     }
 
     // Create job in database
